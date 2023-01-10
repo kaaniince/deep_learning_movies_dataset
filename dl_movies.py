@@ -1,6 +1,7 @@
 
 import pandas as pd
 import tensorflow as tf
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 ratings_df = pd.read_csv("ratings.csv")
@@ -62,6 +63,48 @@ class DeepLearningMovies():
         history = model.fit(ratings_train, types_train, epochs=10)
         loss, accuracy = model.evaluate(ratings_test, types_test)
         print("Test accuracy:", accuracy)
+    def prediction_dataset(self):
+        #Construct a NN model for rating prediction. Your model could include time, movie characteristic, or your user types. 
+        #Train your model and then show the prediction accuracy.
+        self.new_movies_metadata_df = self.movies_metadata_df[['id', 'title', 'genres', 'release_date']]
+        self.new_ratings_df = self.ratings_df[['userId', 'movieId', 'rating', 'timestamp']]
+
+        self.new_merged_df = pd.merge(self.new_ratings_df, self.new_movies_metadata_df, left_on='movieId', right_on='id')
+
+        self.new_user_types = self.user_ratings[['userId', 'type']]
+
+        self.new_merged_df = pd.merge(self.new_merged_df, self.new_user_types, on='userId')
+
+        self.new_merged_df = pd.concat([self.new_merged_df, pd.get_dummies(self.new_merged_df['genres'].str.split('|').apply(pd.Series).stack()).sum(level=0), pd.get_dummies(self.new_merged_df['type'])], axis=1)
+
+        self.new_merged_df['timestamp'] = pd.to_datetime(self.new_merged_df['timestamp'], unit='s')
+        self.new_merged_df['release_year'] = self.new_merged_df['timestamp'].dt.year
+
+        self.new_merged_df = self.new_merged_df.drop(['id', 'title', 'genres', 'release_date', 'timestamp', 'userId', 'movieId', 'type'], axis=1)
+
+        X = self.new_merged_df.drop(['rating'], axis=1)
+        y = self.new_merged_df['rating']
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_test = scaler.transform(X_test)
+
+        model = tf.keras.Sequential([
+            tf.keras.layers.Dense(64, activation='relu', input_shape=(X_train.shape[1],)),
+            tf.keras.layers.Dense(32, activation='relu'),
+            tf.keras.layers.Dense(1)
+        ])
+
+        model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
+
+        history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_test, y_test))
+
+        test_loss, test_mae = model.evaluate(X_test, y_test)
+        print('Test loss:', test_loss)
+        print('Test mean absolute error:', test_mae)
+
 
 
 
@@ -69,5 +112,5 @@ def main():
     dl_movies=DeepLearningMovies(ratings_df,credits_df,keywords_df,links_df,links_small_df,ratings_small_df,movies_metadata_df)
     dl_movies.analyzing_dataset(movies_metadata_df)
     dl_movies.classification_dataset()
-
+    dl_movies.prediction_dataset()
 main()
